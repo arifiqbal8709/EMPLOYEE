@@ -1,0 +1,33 @@
+# Python Cache files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+venv/
+env/
+.env
+
+# NodeJS dependencies
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Visual Studio / Python tools Config
+.vscode/
+.idea/
+.project
+.pydevproject
+
+# ML models weights
+*.pt
+*.onnx
+yolo11n.pt
+
+# Excel/PDF Exports
+tmp/
+*.pdf
+*.xlsx
+*.csv

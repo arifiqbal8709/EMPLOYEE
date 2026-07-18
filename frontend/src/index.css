@@ -1,0 +1,52 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-[#06070B] text-dark-textBody font-sans overflow-x-hidden antialiased;
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.08) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(168, 85, 247, 0.08) 0px, transparent 50%),
+      radial-gradient(at 50% 50%, rgba(16, 185, 129, 0.03) 0px, transparent 50%);
+  }
+
+  /* Custom scrollbar matching dark HUD theme */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    background: rgba(22, 26, 44, 0.2);
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(99, 102, 241, 0.2);
+    border-radius: 4px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(99, 102, 241, 0.4);
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-dark-card border border-dark-border rounded-2xl backdrop-blur-md shadow-2xl;
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  }
+  
+  .glass-card-interactive {
+    @apply glass-card hover:border-dark-accent/40 active:scale-[0.99] transition-all duration-300;
+  }
+
+  .hud-btn-primary {
+    @apply bg-indigo-600 hover:bg-indigo-700 text-white font-medium px-4 py-2 rounded-xl active:scale-[0.97] transition-all duration-200 shadow-lg shadow-indigo-600/20;
+  }
+
+  .hud-btn-secondary {
+    @apply bg-white/5 hover:bg-white/10 text-white border border-white/10 px-4 py-2 rounded-xl active:scale-[0.97] transition-all duration-200;
+  }
+  
+  .hud-input {
+    @apply bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-white placeholder-white/30 focus:outline-none focus:border-indigo-500/50 transition-all duration-200;
+  }
+}
