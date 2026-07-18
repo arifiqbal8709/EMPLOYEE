@@ -87,9 +87,9 @@ export default function Dashboard() {
   }).sort((a, b) => b.score - a.score);
 
   const getRankColor = (index) => {
-    if (index === 0) return "text-amber-400 font-bold"; # Gold
-    if (index === 1) return "text-zinc-400 font-bold"; # Silver
-    if (index === 2) return "text-amber-600 font-bold"; # Bronze
+    if (index === 0) return "text-amber-400 font-bold"; // Gold
+    if (index === 1) return "text-zinc-400 font-bold"; // Silver
+    if (index === 2) return "text-amber-600 font-bold"; // Bronze
     return "text-zinc-500";
   };
 

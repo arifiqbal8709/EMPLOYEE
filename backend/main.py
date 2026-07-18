@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.core.config import settings
 from backend.app.core.database import engine, Base, SessionLocal
-from backend.app.api import auth, employees, cameras, notifications
+from backend.app.api import auth, employees, cameras, notifications, ai
 from backend.app.services.camera_service import camera_service_manager
 from backend.app.services.notification_service import notification_service
 from backend.app.models.camera import Camera
@@ -78,6 +78,7 @@ app.include_router(auth.router, prefix=f"{settings.API_V1_STR}/auth", tags=["Aut
 app.include_router(employees.router, prefix=f"{settings.API_V1_STR}/employees", tags=["Employee Directory"])
 app.include_router(cameras.router, prefix=f"{settings.API_V1_STR}/cameras", tags=["Camera Controls"])
 app.include_router(notifications.router, prefix=f"{settings.API_V1_STR}/notifications", tags=["Notification Center"])
+app.include_router(ai.router, prefix="/api/ai", tags=["AI Camera Engine"])
 
 @app.get("/")
 def read_root():

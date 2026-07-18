@@ -11,6 +11,7 @@ from backend.app.models.user import User
 from backend.app.models.camera import Camera
 from backend.app.models.activity import KeyboardMouseActivity, ProductivityLog
 from backend.app.models.ai_log import NotificationSettings, AlertLog
+from backend.app.models.detection import CameraDetection
 
 def build_and_seed_db():
     print("Connecting to PostgreSQL database...")

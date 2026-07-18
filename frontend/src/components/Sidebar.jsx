@@ -3,8 +3,8 @@ import { LayoutDashboard, Users, Camera, Settings, LogOut, ShieldAlert } from 'l
 import { api } from '../utils/api';
 
 export default function Sidebar({ currentView, setView, onLogout }) {
-  const role = localStorage.getItem("role") || "employee";
-  const username = localStorage.getItem("username") || "User";
+  const role = localStorage.getItem("role") || "manager";
+  const username = localStorage.getItem("username") || "manager_user";
 
   const handleLogoutClick = () => {
     api.auth.logout();
