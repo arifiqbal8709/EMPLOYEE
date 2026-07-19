@@ -260,22 +260,23 @@ class CameraThread(threading.Thread):
 
         # 3. CONTINUOUS ABSENCE / PRESENCE TRACKING (> 3 SECONDS)
         if raw_person_detected:
-            self.last_db_save = now
+            self.last_person_seen = now
             self.telemetry["is_present"] = True
+            self.telemetry["person_detected"] = "Yes"
         else:
-            # If no person detected continuously for > 3 seconds, set missing
-            if hasattr(self, 'closed_eyes_start') and self.closed_eyes_start and (now - self.closed_eyes_start > 3.0):
+            if not hasattr(self, 'last_person_seen') or self.last_person_seen is None:
+                self.last_person_seen = now
+            elif now - self.last_person_seen >= 3.0:
                 self.telemetry["is_present"] = False
+                self.telemetry["person_detected"] = "No"
 
-        # 4. CONTINUOUS PHONE USAGE TRACKING (> 2 SECONDS)
+        # 4. PHONE USAGE TRACKING (> 0.60 CONFIDENCE)
         if raw_phone_detected and self.telemetry["is_present"]:
-            if not hasattr(self, 'phone_seen_start') or self.phone_seen_start is None:
-                self.phone_seen_start = now
-            elif now - self.phone_seen_start >= 2.0:
-                self.telemetry["phone_detected"] = True
+            self.telemetry["phone_detected"] = True
+            self.telemetry["phone_detected_str"] = "Yes"
         else:
-            self.phone_seen_start = None
             self.telemetry["phone_detected"] = False
+            self.telemetry["phone_detected_str"] = "No"
 
         # 5. RUN REAL MEDIAPIPE FACE MESH INFERENCE
         raw_looking_monitor = True

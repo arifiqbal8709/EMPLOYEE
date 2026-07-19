@@ -246,8 +246,17 @@ class WebcamDetectionService:
                 fps_text = f"FPS: {fps}"
                 cv2.putText(frame, fps_text, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2, cv2.LINE_AA)
 
-                # Store thread-safe telemetry indices
-                self.telemetry["person_detected"] = has_person
+                # 3-Second Person Absence & Telemetry tracking
+                now = time.time()
+                if has_person == "Yes":
+                    self.last_person_seen = now
+                    self.telemetry["person_detected"] = "Yes"
+                else:
+                    if not hasattr(self, 'last_person_seen') or self.last_person_seen is None:
+                        self.last_person_seen = now
+                    elif now - self.last_person_seen >= 3.0:
+                        self.telemetry["person_detected"] = "No"
+
                 self.telemetry["phone_detected"] = has_phone
                 self.telemetry["laptop_detected"] = has_laptop
                 self.telemetry["chair_detected"] = has_chair
