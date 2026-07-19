@@ -229,9 +229,8 @@ class WebcamDetectionService:
             db.close()
 
     def _run_loop(self):
-        webcam_idx = self.auto_detect_webcam()
-
-        self.camera_source = OpenCVCameraSource(webcam_idx)
+        # Open hardware webcam index 0 directly via OpenCVCameraSource without multi-backend device locking probes
+        self.camera_source = OpenCVCameraSource(0)
         self.status = "running"
         self.telemetry["camera_status"] = "Active Streaming"
         

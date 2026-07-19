@@ -46,23 +46,14 @@ async def lifespan(app: FastAPI):
     print("Initiating notification alerts daemon...")
     notification_service.start()
 
-    # 3. Boot cameras marked as connected on last run
-    print("Loading active camera streams threads...")
-    db = SessionLocal()
+    # 3. Boot single webcam detection service
+    print("Booting webcam detection service...")
     try:
-        active_cams = db.query(Camera).filter(Camera.status == "connected").all()
-        for cam in active_cams:
-            camera_service_manager.start_camera(
-                camera_id=cam.id,
-                source=cam.source,
-                camera_type=cam.type,
-                user_id=cam.user_id
-            )
-        print(f"Triggered check for {len(active_cams)} camera connections.")
+        from backend.app.services.webcam_detection_service import WebcamDetectionService
+        WebcamDetectionService().start()
+        print("Webcam detection service started successfully.")
     except Exception as e:
-        print(f"Error loading startup streams: {str(e)}")
-    finally:
-        db.close()
+        print(f"Error starting webcam service: {str(e)}")
 
     yield  # Runs application
 
