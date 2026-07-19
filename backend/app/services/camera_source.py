@@ -44,10 +44,18 @@ class OpenCVCameraSource(BaseCameraSource):
                 try:
                     cap = cv2.VideoCapture(self.source, backend)
                     if cap and cap.isOpened():
+                        import time
+                        time.sleep(0.2)  # 200ms Windows camera sensor warmup window
                         ret, frame = cap.read()
                         if ret and frame is not None:
                             self.cap = cap
                             logger.info(f"OpenCV Camera source {self.source} opened with backend {backend}")
+                            break
+                        # Second attempt after warm-up
+                        ret, frame = cap.read()
+                        if ret and frame is not None:
+                            self.cap = cap
+                            logger.info(f"OpenCV Camera source {self.source} opened with backend {backend} on second attempt")
                             break
                         cap.release()
                 except Exception as e:
