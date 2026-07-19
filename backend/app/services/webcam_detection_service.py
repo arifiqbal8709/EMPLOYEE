@@ -40,16 +40,23 @@ class WebcamDetectionService:
             "employee_status": "Employee Missing",
             "is_present": False,
             "phone_detected": "No",
+            "phone_status": "Phone Not Detected",
             "laptop_detected": "No",
             "chair_detected": "No",
             "confidence": "0%",
             "fps": 0
         }
 
-        # Validation timers & consecutive frame state
+        # Validation timers & consecutive frame state for Person
         self.missing_start_time = None
         self.consecutive_person_frames = 0
         self.consecutive_missing_frames = 0
+
+        # Phone Detection Timers & Consecutive Frame State
+        self.phone_visible_start_time = None
+        self.phone_missing_start_time = None
+        self.consecutive_phone_frames = 0
+        self.consecutive_no_phone_frames = 0
         
         self.target_classes = {
             0: "person",
@@ -188,8 +195,8 @@ class WebcamDetectionService:
                 # Frame details size
                 height, width, _ = frame.shape
                 
-                # Setup YOLO Inference with 60% confidence threshold constraint
-                results = self.model(frame, verbose=False, conf=0.60)[0]
+                # Setup YOLO Inference with 65% confidence threshold constraint
+                results = self.model(frame, verbose=False, conf=0.65)[0]
                 
                 detections = []
                 confidences = []
@@ -208,6 +215,9 @@ class WebcamDetectionService:
 
                     cls_name = self.target_classes[cls_id]
                     conf = float(box.conf[0].item())
+                    if conf < 0.65:
+                        continue
+
                     confidences.append(conf)
 
                     # Mark triggers
@@ -260,7 +270,6 @@ class WebcamDetectionService:
                     self.consecutive_missing_frames = 0
                     self.missing_start_time = None
 
-                    # Require at least 2 consecutive frames to confirm presence (prevents single false positive glitches)
                     if self.consecutive_person_frames >= 2:
                         self.telemetry["person_detected"] = "Yes"
                         self.telemetry["employee_status"] = "Employee Present"
@@ -269,7 +278,6 @@ class WebcamDetectionService:
                     self.consecutive_missing_frames += 1
                     self.consecutive_person_frames = 0
 
-                    # Do NOT trigger on a single missed frame. Use consecutive frame validation + 3s timer
                     if self.consecutive_missing_frames >= 2:
                         if self.missing_start_time is None:
                             self.missing_start_time = now
@@ -278,9 +286,33 @@ class WebcamDetectionService:
                             self.telemetry["employee_status"] = "Employee Missing"
                             self.telemetry["is_present"] = False
 
-                self.telemetry["phone_detected"] = has_phone
+                # 2-Second Cell Phone Presence & Disappearance Timer Tracking (conf >= 0.65)
+                if has_phone == "Yes":
+                    self.consecutive_phone_frames += 1
+                    self.consecutive_no_phone_frames = 0
+                    self.phone_missing_start_time = None
+
+                    if self.consecutive_phone_frames >= 2:
+                        if self.phone_visible_start_time is None:
+                            self.phone_visible_start_time = now
+                        elif now - self.phone_visible_start_time >= 2.0:
+                            self.telemetry["phone_detected"] = "Yes"
+                            self.telemetry["phone_status"] = "Phone Usage Detected"
+                else:
+                    self.consecutive_no_phone_frames += 1
+                    self.consecutive_phone_frames = 0
+                    self.phone_visible_start_time = None
+
+                    if self.consecutive_no_phone_frames >= 2:
+                        if self.phone_missing_start_time is None:
+                            self.phone_missing_start_time = now
+                        elif now - self.phone_missing_start_time >= 2.0:
+                            self.telemetry["phone_detected"] = "No"
+                            self.telemetry["phone_status"] = "Phone Not Detected"
+
                 self.telemetry["laptop_detected"] = has_laptop
                 self.telemetry["chair_detected"] = has_chair
+                self.telemetry["fps"] = fps
                 self.telemetry["fps"] = fps
                 
                 if confidences:
