@@ -37,12 +37,19 @@ class WebcamDetectionService:
         self.telemetry = {
             "camera_status": "Inactive",
             "person_detected": "No",
+            "employee_status": "Employee Missing",
+            "is_present": False,
             "phone_detected": "No",
             "laptop_detected": "No",
             "chair_detected": "No",
             "confidence": "0%",
             "fps": 0
         }
+
+        # Validation timers & consecutive frame state
+        self.missing_start_time = None
+        self.consecutive_person_frames = 0
+        self.consecutive_missing_frames = 0
         
         self.target_classes = {
             0: "person",
@@ -246,16 +253,30 @@ class WebcamDetectionService:
                 fps_text = f"FPS: {fps}"
                 cv2.putText(frame, fps_text, (10, 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2, cv2.LINE_AA)
 
-                # 3-Second Person Absence & Telemetry tracking
+                # Consecutive Frame Validation & 3-Second Person Absence Tracking
                 now = time.time()
                 if has_person == "Yes":
-                    self.last_person_seen = now
-                    self.telemetry["person_detected"] = "Yes"
+                    self.consecutive_person_frames += 1
+                    self.consecutive_missing_frames = 0
+                    self.missing_start_time = None
+
+                    # Require at least 2 consecutive frames to confirm presence (prevents single false positive glitches)
+                    if self.consecutive_person_frames >= 2:
+                        self.telemetry["person_detected"] = "Yes"
+                        self.telemetry["employee_status"] = "Employee Present"
+                        self.telemetry["is_present"] = True
                 else:
-                    if not hasattr(self, 'last_person_seen') or self.last_person_seen is None:
-                        self.last_person_seen = now
-                    elif now - self.last_person_seen >= 3.0:
-                        self.telemetry["person_detected"] = "No"
+                    self.consecutive_missing_frames += 1
+                    self.consecutive_person_frames = 0
+
+                    # Do NOT trigger on a single missed frame. Use consecutive frame validation + 3s timer
+                    if self.consecutive_missing_frames >= 2:
+                        if self.missing_start_time is None:
+                            self.missing_start_time = now
+                        elif now - self.missing_start_time >= 3.0:
+                            self.telemetry["person_detected"] = "No"
+                            self.telemetry["employee_status"] = "Employee Missing"
+                            self.telemetry["is_present"] = False
 
                 self.telemetry["phone_detected"] = has_phone
                 self.telemetry["laptop_detected"] = has_laptop
@@ -306,3 +327,6 @@ class WebcamDetectionService:
 
     def get_frame(self) -> bytes:
         return self.latest_frame
+
+    def get_telemetry(self) -> dict:
+        return self.telemetry
