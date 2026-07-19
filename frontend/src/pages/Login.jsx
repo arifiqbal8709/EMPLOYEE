@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { ShieldAlert, Lock, User, AlertCircle, Loader } from 'lucide-react';
-import { api } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 
 export default function Login({ onLoginSuccess }) {
+  const { login } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -11,14 +12,16 @@ export default function Login({ onLoginSuccess }) {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!username || !password) {
-      setError('Please fill in all inputs fields.');
+      setError('Please fill in all input fields.');
       return;
     }
     setLoading(true);
     setError('');
     try {
-      await api.auth.login(username, password);
-      onLoginSuccess();
+      await login(username, password);
+      if (onLoginSuccess) {
+        onLoginSuccess();
+      }
     } catch (err) {
       setError(err.message || 'Login failed. Please verify credentials.');
     } finally {
@@ -35,7 +38,7 @@ export default function Login({ onLoginSuccess }) {
 
         {/* Head Branding Header */}
         <div className="flex flex-col items-center mb-8 relative">
-          <div className="bg-indigo-600/15 text-indigo-400 p-4 rounded-2xl border border-indigo-500/20 shadow-xl shadow-indigo-600/5 mb-4 mb-3">
+          <div className="bg-indigo-600/15 text-indigo-400 p-4 rounded-2xl border border-indigo-500/20 shadow-xl shadow-indigo-600/5 mb-3">
             <ShieldAlert size={28} className="animate-pulse" />
           </div>
           <h2 className="text-white text-xl font-bold tracking-tight">AI FOCUS PORTAL</h2>

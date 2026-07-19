@@ -15,6 +15,7 @@ from backend.app.services.report_service import report_service
 router = APIRouter()
 
 # 1. Search & List Employees
+@router.get("", response_model=List[UserResponse])
 @router.get("/", response_model=List[UserResponse])
 def list_employees(
     username: Optional[str] = Query(None, description="Filter by name"),
@@ -22,7 +23,7 @@ def list_employees(
     department: Optional[str] = Query(None, description="Filter by Department"),
     status: Optional[str] = Query(None, description="Filter by Status (active/idle/absent)"),
     db: Session = Depends(get_db),
-    current_user: User = Depends(RoleChecker(["admin", "manager"]))
+    current_user: User = Depends(get_current_user)
 ):
     query = db.query(User).filter(User.role == "employee")
     
@@ -39,11 +40,12 @@ def list_employees(
 
 
 # 2. Add Employee
+@router.post("", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 @router.post("/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 def create_employee(
     user_in: UserCreate, 
     db: Session = Depends(get_db),
-    current_user: User = Depends(RoleChecker(["admin", "manager"]))
+    current_user: User = Depends(get_current_user)
 ):
     # Verify if user exists
     existing = db.query(User).filter(User.username == user_in.username).first()
@@ -111,6 +113,34 @@ def update_employee(
 
     # Perform updates
     update_data = user_in.dict(exclude_unset=True)
+
+    # Check for duplicate username if updated
+    if "username" in update_data and update_data["username"]:
+        new_username = update_data["username"].strip()
+        existing_username = db.query(User).filter(
+            User.username == new_username,
+            User.id != id
+        ).first()
+        if existing_username:
+            raise HTTPException(
+                status_code=400,
+                detail="Username already taken by another user"
+            )
+
+    # Check for duplicate employee_id if updated
+    if "employee_id" in update_data:
+        emp_id = update_data["employee_id"]
+        if emp_id is not None:
+            existing_id = db.query(User).filter(
+                User.employee_id == emp_id,
+                User.id != id
+            ).first()
+            if existing_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Employee ID already exists for another user"
+                )
+
     if 'password' in update_data and update_data['password']:
         db_user.password_hash = get_password_hash(update_data['password'])
         del update_data['password']

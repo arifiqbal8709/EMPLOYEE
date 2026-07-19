@@ -1,20 +1,23 @@
 import React from 'react';
 import { LayoutDashboard, Users, Camera, Settings, LogOut, ShieldAlert } from 'lucide-react';
-import { api } from '../utils/api';
+import { useAuth } from '../context/AuthContext';
 
 export default function Sidebar({ currentView, setView, onLogout }) {
-  const role = localStorage.getItem("role") || "manager";
-  const username = localStorage.getItem("username") || "manager_user";
+  const { user, logout } = useAuth();
+  const role = user?.role || localStorage.getItem("role") || "employee";
+  const username = user?.username || localStorage.getItem("username") || "User";
 
   const handleLogoutClick = () => {
-    api.auth.logout();
-    onLogout();
+    logout();
+    if (onLogout) {
+      onLogout();
+    }
   };
 
   const navItems = [
     { id: 'dashboard', name: 'Dashboard', icon: LayoutDashboard, roles: ['admin', 'manager', 'employee'] },
-    { id: 'employees', name: 'Employee Directory', icon: Users, roles: ['admin', 'manager'] },
-    { id: 'cameras', name: 'Camera Monitoring', icon: Camera, roles: ['admin', 'manager'] },
+    { id: 'employees', name: 'Employee Directory', icon: Users, roles: ['admin', 'manager', 'employee'] },
+    { id: 'cameras', name: 'Camera Monitoring', icon: Camera, roles: ['admin', 'manager', 'employee'] },
     { id: 'settings', name: 'Settings', icon: Settings, roles: ['admin', 'manager', 'employee'] },
   ];
 

@@ -20,16 +20,16 @@ class Settings(BaseSettings):
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 # 24 hours
     
-    # PostgreSQL Database URL
+    # Database URL
     DATABASE_URL: str = os.getenv(
         "DATABASE_URL", 
-        "postgresql://postgres:postgres@localhost:5432/employee_monitoring"
+        f"sqlite:///{os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../database/employee_monitoring.db')).replace('\\', '/')}"
     )
     
     # CORS setup
     BACKEND_CORS_ORIGINS: Annotated[
         List[str], BeforeValidator(parse_cors)
-    ] = ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "http://127.0.0.1:3000"]
+    ] = ["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "http://127.0.0.1:3000", "http://localhost:5174", "http://127.0.0.1:5174", "*"]
     
     class Config:
         case_sensitive = True

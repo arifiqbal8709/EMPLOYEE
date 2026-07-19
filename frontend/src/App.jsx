@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Sidebar from './components/Sidebar';
 import Navbar from './components/Navbar';
 import Login from './pages/Login';
@@ -6,24 +6,12 @@ import Dashboard from './pages/Dashboard';
 import EmployeeManagement from './pages/EmployeeManagement';
 import CameraManagement from './pages/CameraManagement';
 import SettingsPage from './pages/Settings';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { Loader } from 'lucide-react';
 
-export default function App() {
-  const [isAuthenticated, setIsAuthenticated] = useState(true);
+function MainLayout() {
+  const { isAuthenticated, loading } = useAuth();
   const [view, setView] = useState('dashboard');
-
-  useEffect(() => {
-    checkAuth();
-  }, []);
-
-  const checkAuth = () => {
-    if (!localStorage.getItem("role")) {
-      localStorage.setItem("role", "manager");
-    }
-    if (!localStorage.getItem("username")) {
-      localStorage.setItem("username", "manager_user");
-    }
-    setIsAuthenticated(true);
-  };
 
   const getViewTitle = (currentView) => {
     switch (currentView) {
@@ -55,10 +43,27 @@ export default function App() {
     }
   };
 
+  // Full-screen loading state during initial session verification
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#030407] text-white">
+        <div className="flex flex-col items-center gap-3">
+          <Loader size={32} className="animate-spin text-indigo-500" />
+          <p className="text-xs text-zinc-400 font-mono tracking-wider uppercase">Verifying Security Session...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Protected route guard: render Login component if unauthenticated
+  if (!isAuthenticated) {
+    return <Login />;
+  }
+
   return (
     <div className="min-h-screen relative flex">
       {/* Side Navigation HUD panel */}
-      <Sidebar currentView={view} setView={setView} onLogout={checkAuth} />
+      <Sidebar currentView={view} setView={setView} />
 
       {/* Main viewport area */}
       <div className="flex-1 ml-64 min-h-screen flex flex-col relative">
@@ -70,5 +75,13 @@ export default function App() {
         </main>
       </div>
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <MainLayout />
+    </AuthProvider>
   );
 }

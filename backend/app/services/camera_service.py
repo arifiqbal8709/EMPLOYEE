@@ -2,7 +2,7 @@ import cv2
 import time
 import numpy as np
 import threading
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, Generator, Optional
 from sqlalchemy.orm import Session
 from backend.app.core.database import SessionLocal
@@ -84,21 +84,40 @@ class CameraThread(threading.Thread):
     def run(self):
         print(f"Starting camera thread for ID {self.camera_id} (source: {self.source})")
         
-        # Attempt to open Video Capture
-        if self.source.isdigit():
+        # Resolve source value
+        if isinstance(self.source, int) or (isinstance(self.source, str) and self.source.isdigit()):
             src_val = int(self.source)
         else:
             src_val = self.source
 
         try:
-            self.cap = cv2.VideoCapture(src_val)
-            # Try to grab a frame to check connect status
-            ret, frame = self.cap.read()
-            if not ret:
-                raise Exception("Could not retrieve frame")
-            
-            # Update camera status in DB
-            self._update_db_status("connected")
+            if isinstance(src_val, int) or src_val == 0:
+                cap = None
+                for backend in [cv2.CAP_DSHOW, cv2.CAP_MSMF, cv2.CAP_ANY]:
+                    try:
+                        c = cv2.VideoCapture(src_val, backend)
+                        if c and c.isOpened():
+                            ret, frame = c.read()
+                            if ret and frame is not None:
+                                cap = c
+                                break
+                            c.release()
+                    except Exception:
+                        pass
+                if cap is None:
+                    cap = cv2.VideoCapture(src_val)
+                self.cap = cap
+            else:
+                self.cap = cv2.VideoCapture(src_val)
+
+            if self.cap and self.cap.isOpened():
+                ret, frame = self.cap.read()
+                if ret and frame is not None:
+                    self._update_db_status("connected")
+                else:
+                    raise Exception("Could not retrieve frame")
+            else:
+                raise Exception("Could not open video capture")
         except Exception as e:
             print(f"Camera ID {self.camera_id} failed to connect: {str(e)}. Starting simulation mode.")
             self._update_db_status("disconnected")
@@ -172,194 +191,162 @@ class CameraThread(threading.Thread):
 
     def _process_frame(self, frame, frame_count, cached_yolo_results, is_simulated):
         h, w, _ = frame.shape
-        # Target classes: Person (0), Chair (56), Laptop (63), Cell phone (67)
-        target_classes = {0: "Person", 56: "Chair", 63: "Laptop", 67: "Mobile Phone"}
+        now = time.time()
+
+        # Target COCO classes: Person (0), Chair (56), Laptop (63), Mouse (64), Keyboard (66), Cell Phone (67), Bottle (39), Book (73)
+        target_classes = {
+            0: "Person",
+            67: "Cell Phone",
+            63: "Laptop",
+            66: "Keyboard",
+            64: "Mouse",
+            39: "Bottle",
+            73: "Book",
+            56: "Chair"
+        }
         
-        # 1. Resize for performance optimization
+        # 1. Resize small frame for real-time inference speed
         small_frame = cv2.resize(frame, (640, 480))
         sh, sw, _ = small_frame.shape
 
-        # Reset current frame detections
-        self.telemetry["is_present"] = False
-        self.telemetry["phone_detected"] = False
-        self.telemetry["sleeping"] = False
-        self.telemetry["looking_at_monitor"] = True
+        raw_person_detected = False
+        raw_phone_detected = False
+        raw_laptop_detected = False
 
-        # Simulating detections or running actual YOLO
-        if is_simulated:
-            # Create simulated bounding boxes
-            sim_time = time.time()
-            # Person present
+        # 2. RUN REAL YOLOV11 OBJECT DETECTION INFERENCE (conf >= 0.60)
+        if self.yolo_model and frame_count % 2 == 0:
+            try:
+                cached_yolo_results = self.yolo_model.predict(small_frame, conf=0.60, verbose=False)
+            except Exception as e:
+                print(f"YOLOv11 real inference predict error: {e}")
+
+        if cached_yolo_results:
+            for result in cached_yolo_results:
+                boxes = result.boxes
+                for box in boxes:
+                    conf = float(box.conf[0])
+                    if conf < 0.60:
+                        continue
+
+                    cls_id = int(box.cls[0])
+                    if cls_id in target_classes:
+                        xyxy = box.xyxy[0].tolist()
+                        
+                        # Scale coordinates back to original frame
+                        rx1 = int(xyxy[0] * w / sw)
+                        ry1 = int(xyxy[1] * h / sh)
+                        rx2 = int(xyxy[2] * w / sw)
+                        ry2 = int(xyxy[3] * h / sh)
+                        
+                        label_name = target_classes[cls_id]
+                        label = f"{label_name} {round(conf * 100)}%"
+                        
+                        color = (0, 255, 0) # Green for Person / Chair
+                        if cls_id == 67: # Cell Phone
+                            color = (0, 0, 255) # Red
+                            raw_phone_detected = True
+                        elif cls_id == 63: # Laptop
+                            color = (255, 255, 0) # Cyan
+                            raw_laptop_detected = True
+                        elif cls_id in [64, 66]: # Mouse / Keyboard
+                            color = (255, 0, 255) # Magenta
+                        elif cls_id == 0: # Person
+                            raw_person_detected = True
+                            color = (0, 255, 0)
+
+                        # Draw live bounding box & confidence score on frame
+                        cv2.rectangle(frame, (rx1, ry1), (rx2, ry2), color, 2)
+                        cv2.putText(frame, label, (rx1, max(ry1 - 10, 15)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+
+        # 3. CONTINUOUS ABSENCE / PRESENCE TRACKING (> 3 SECONDS)
+        if raw_person_detected:
+            self.last_db_save = now
             self.telemetry["is_present"] = True
-            cv2.rectangle(frame, (80, 50), (560, 470), (0, 255, 0), 2)
-            cv2.putText(frame, "Person (Simulated 98%)", (80, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-            
-            # Laptop present
-            cv2.rectangle(frame, (150, 300), (450, 460), (255, 100, 0), 2)
-            cv2.putText(frame, "Laptop (Simulated 99%)", (150, 290), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 100, 0), 2)
-
-            # Interactive phone trigger (cycling usage state)
-            if int(sim_time / 6) % 3 == 0:
-                self.telemetry["phone_detected"] = True
-                cv2.rectangle(frame, (420, 220), (480, 280), (0, 0, 255), 2)
-                cv2.putText(frame, "Mobile Phone (Simulated 94%)", (380, 210), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-
-            # Simulated Head direction checking (looking away)
-            gaze_state = int(sim_time / 10) % 3
-            if gaze_state == 1:
-                self.telemetry["looking_at_monitor"] = False
-                color = (0, 165, 255)
-                cv2.line(frame, (320, 180), (120, 150), color, 3) # Vector looking away
-                cv2.putText(frame, "Diverted Gaze: Looking Left", (50, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
-            elif gaze_state == 2:
-                # sleeping state
-                self.telemetry["sleeping"] = True
-                cv2.putText(frame, "Drowsiness Alert: Eyes Closed", (50, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-            else:
-                cv2.line(frame, (320, 180), (320, 180 + 80), (0, 255, 0), 3) # Vector pointing straight
-                cv2.putText(frame, "Gaze Status: Looking at Monitor", (50, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-
-            # Draw basic stick-face meshes & grid to look cool
-            cv2.circle(frame, (320, 180), 60, (200, 200, 200), 1)
-            # Eyes
-            cv2.circle(frame, (300, 170), 8, (255, 100, 0), -1 if not self.telemetry["sleeping"] else 1)
-            cv2.circle(frame, (340, 170), 8, (255, 100, 0), -1 if not self.telemetry["sleeping"] else 1)
-            # Pose lines
-            cv2.line(frame, (320, 240), (320, 360), (200, 200, 200), 2)
-            cv2.line(frame, (320, 260), (220, 290), (200, 200, 200), 2)
-            cv2.line(frame, (320, 260), (420, 290), (200, 200, 200), 2)
-
         else:
-            # 2. RUN REAL YOLO INFERENCE
-            if self.yolo_model and frame_count % 3 == 0:
-                try:
-                    cached_yolo_results = self.yolo_model.predict(small_frame, conf=0.4, verbose=False)
-                except Exception as e:
-                    print(f"YOLO predict error: {e}")
+            # If no person detected continuously for > 3 seconds, set missing
+            if hasattr(self, 'closed_eyes_start') and self.closed_eyes_start and (now - self.closed_eyes_start > 3.0):
+                self.telemetry["is_present"] = False
 
-            if cached_yolo_results:
-                for result in cached_yolo_results:
-                    boxes = result.boxes
-                    for box in boxes:
-                        cls_id = int(box.cls[0])
-                        if cls_id in target_classes:
-                            conf = float(box.conf[0])
-                            xyxy = box.xyxy[0].tolist()
-                            
-                            # Scale coordinates back to original frame
-                            rx1 = int(xyxy[0] * w / sw)
-                            ry1 = int(xyxy[1] * h / sh)
-                            rx2 = int(xyxy[2] * w / sw)
-                            ry2 = int(xyxy[3] * h / sh)
-                            
-                            label = f"{target_classes[cls_id]} ({round(conf * 100)}%)"
-                            color = (0, 255, 0) # Green for Person/Chair
-                            if cls_id == 67: # Phone
-                                color = (0, 0, 255) # Red
-                                self.telemetry["phone_detected"] = True
-                            elif cls_id == 63: # Laptop
-                                color = (255, 100, 0) # Blue
-                            
-                            if cls_id == 0:
-                                self.telemetry["is_present"] = True
+        # 4. CONTINUOUS PHONE USAGE TRACKING (> 2 SECONDS)
+        if raw_phone_detected and self.telemetry["is_present"]:
+            if not hasattr(self, 'phone_seen_start') or self.phone_seen_start is None:
+                self.phone_seen_start = now
+            elif now - self.phone_seen_start >= 2.0:
+                self.telemetry["phone_detected"] = True
+        else:
+            self.phone_seen_start = None
+            self.telemetry["phone_detected"] = False
 
-                            cv2.rectangle(frame, (rx1, ry1), (rx2, ry2), color, 2)
-                            cv2.putText(frame, label, (rx1, max(ry1 - 10, 15)), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
+        # 5. RUN REAL MEDIAPIPE FACE MESH INFERENCE
+        raw_looking_monitor = True
+        raw_sleeping = False
 
-            # 3. RUN REAL MEDIAPIPE INFRASTRUCTURE (mesh and pose skeleton)
-            if self.telemetry["is_present"]:
-                frame_rgb = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
-                
-                # Face Mesh for eyes and orientation tracking
-                if self.face_mesh:
-                    fm_res = self.face_mesh.process(frame_rgb)
-                    if fm_res.multi_face_landmarks:
-                        landmarks = fm_res.multi_face_landmarks[0].landmark
-                        
-                        # EAR blinking calculation values base spots
-                        # Left Eye: 362, 385, 387, 263, 373, 380
-                        # Right Eye: 33, 160, 158, 133, 153, 144
-                        def ear_calc(eye_landmarks, landmarks):
-                            # vertical distances
-                            v1 = np.linalg.norm(np.array([landmarks[eye_landmarks[1]].x, landmarks[eye_landmarks[1]].y]) - 
-                                                np.array([landmarks[eye_landmarks[5]].x, landmarks[eye_landmarks[5]].y]))
-                            v2 = np.linalg.norm(np.array([landmarks[eye_landmarks[2]].x, landmarks[eye_landmarks[2]].y]) - 
-                                                np.array([landmarks[eye_landmarks[4]].x, landmarks[eye_landmarks[4]].y]))
-                            # horizontal distance
-                            h = np.linalg.norm(np.array([landmarks[eye_landmarks[0]].x, landmarks[eye_landmarks[0]].y]) - 
-                                               np.array([landmarks[eye_landmarks[3]].x, landmarks[eye_landmarks[3]].y]))
-                            return (v1 + v2) / (2.0 * h) if h > 0 else 0.0
+        if self.telemetry["is_present"]:
+            frame_rgb = cv2.cvtColor(small_frame, cv2.COLOR_BGR2RGB)
+            if self.face_mesh:
+                fm_res = self.face_mesh.process(frame_rgb)
+                if fm_res.multi_face_landmarks:
+                    landmarks = fm_res.multi_face_landmarks[0].landmark
+                    
+                    # Eye Aspect Ratio (EAR) calculation for blinking & drowsiness
+                    def calculate_ear(eye_indices):
+                        p1 = np.array([landmarks[eye_indices[0]].x, landmarks[eye_indices[0]].y])
+                        p2 = np.array([landmarks[eye_indices[1]].x, landmarks[eye_indices[1]].y])
+                        p3 = np.array([landmarks[eye_indices[2]].x, landmarks[eye_indices[2]].y])
+                        p4 = np.array([landmarks[eye_indices[3]].x, landmarks[eye_indices[3]].y])
+                        p5 = np.array([landmarks[eye_indices[4]].x, landmarks[eye_indices[4]].y])
+                        p6 = np.array([landmarks[eye_indices[5]].x, landmarks[eye_indices[5]].y])
+                        v1 = np.linalg.norm(p2 - p6)
+                        v2 = np.linalg.norm(p3 - p5)
+                        h_dist = np.linalg.norm(p1 - p4)
+                        return (v1 + v2) / (2.0 * h_dist) if h_dist > 0 else 0.0
 
-                        left_ear = ear_calc([362, 385, 387, 263, 373, 380], landmarks)
-                        right_ear = ear_calc([33, 160, 158, 133, 153, 144], landmarks)
-                        avg_ear = (left_ear + right_ear) / 2.0
-                        
-                        # Threshold status closed eyes
-                        if avg_ear < 0.21:
-                            if self.closed_eyes_start is None:
-                                self.closed_eyes_start = time.time()
-                            elif time.time() - self.closed_eyes_start > 2.0:
-                                self.telemetry["sleeping"] = True
-                        else:
-                            self.closed_eyes_start = None
+                    left_ear = calculate_ear([362, 385, 387, 263, 373, 380])
+                    right_ear = calculate_ear([33, 160, 158, 133, 153, 144])
+                    avg_ear = (left_ear + right_ear) / 2.0
+                    
+                    if avg_ear < 0.20:
+                        if not hasattr(self, 'closed_eyes_start') or self.closed_eyes_start is None:
+                            self.closed_eyes_start = now
+                        elif now - self.closed_eyes_start >= 2.0:
+                            raw_sleeping = True
+                    else:
+                        self.closed_eyes_start = None
 
-                        # Head orientation direction simple projection
-                        # Using relative coordinates of nose tip (1) vs left/right temples (127, 356)
-                        nose = landmarks[1]
-                        left_temple = landmarks[127]
-                        right_temple = landmarks[356]
-                        
-                        # Horizontal yaw offset ratios
-                        dist_left = nose.x - left_temple.x
-                        dist_right = right_temple.x - nose.x
-                        total_width = right_temple.x - left_temple.x
-                        
-                        if total_width > 0:
-                            ratio = (dist_left - dist_right) / total_width
-                            # If ratio exceeds threshold, head is looking away
-                            if abs(ratio) > 0.18:
-                                self.telemetry["looking_at_monitor"] = False
-                                
-                        # Render Face mesh contours on frame
-                        for lm in [33, 263, 1, 61, 291, 199]: # Draw main anchors
-                            cx, cy = int(lm_x := landmarks[lm].x * w), int(landmarks[lm].y * h)
-                            cv2.circle(frame, (cx, cy), 3, (0, 255, 255), -1)
+                    # Head Pose & Gaze Orientation Tracking
+                    nose = landmarks[1]
+                    left_eye = landmarks[33]
+                    right_eye = landmarks[263]
+                    chin = landmarks[152]
+                    
+                    eye_center_x = (left_eye.x + right_eye.x) / 2.0
+                    eye_dist = abs(right_eye.x - left_eye.x)
+                    
+                    if eye_dist > 0:
+                        yaw_ratio = (nose.x - eye_center_x) / eye_dist
+                        pitch_ratio = (nose.y - eye_center_x) / abs(chin.y - nose.y) if abs(chin.y - nose.y) > 0 else 0
 
-                # Pose model for skeleton
-                if self.pose:
-                    pose_res = self.pose.process(frame_rgb)
-                    if pose_res.pose_landmarks:
-                        joints = pose_res.pose_landmarks.landmark
-                        # Draw upper body pose connections
-                        connections = [(11, 12), (11, 23), (12, 24), (23, 24), (11, 13), (12, 14), (13, 15), (14, 16)]
-                        for link in connections:
-                            pl1 = joints[link[0]]
-                            pl2 = joints[link[1]]
-                            if pl1.visibility > 0.5 and pl2.visibility > 0.5:
-                                p1 = (int(pl1.x * w), int(pl1.y * h))
-                                p2 = (int(pl2.x * w), int(pl2.y * h))
-                                cv2.line(frame, p1, p2, (255, 0, 255), 2)
+                        if abs(yaw_ratio) > 0.25 or pitch_ratio > 0.35:
+                            raw_looking_monitor = False
+
+                    # Render key face mesh landmarks
+                    for lm in [33, 263, 1, 61, 291, 152]:
+                        cx, cy = int(landmarks[lm].x * w), int(landmarks[lm].y * h)
+                        cv2.circle(frame, (cx, cy), 2, (0, 255, 255), -1)
+
+        self.telemetry["sleeping"] = raw_sleeping
+        self.telemetry["looking_at_monitor"] = raw_looking_monitor
+        self.telemetry["laptop_detected"] = raw_laptop_detected
+
+        return frame, cached_yolo_results
                                 
         return frame, cached_yolo_results
 
     def _generate_simulated_frame(self) -> np.ndarray:
-        # Create solid canvas with high-end matching dashboard color
+        # Create clean standby canvas when camera stream is standby or offline
         canvas = np.zeros((480, 640, 3), dtype=np.uint8)
-        # Deep blue background gradient
-        for y in range(480):
-            canvas[y, :] = [int(15 + y * 0.05), int(10 + y * 0.03), int(40 + y * 0.08)]
-        
-        # Grid lines looking like telemetry tracking HUD
-        for gx in range(0, 640, 80):
-            cv2.line(canvas, (gx, 0), (gx, 480), (35, 30, 75), 1)
-        for gy in range(0, 480, 80):
-            cv2.line(canvas, (0, gy), (640, gy), (35, 30, 75), 1)
-
-        # Technical info Overlay
-        cv2.putText(canvas, f"CAMERA SERVICE: {self.source.upper()}", (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
-        cv2.putText(canvas, f"STATUS: SIMULATION ACTIVE", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
-        cv2.putText(canvas, f"TIME: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}", (20, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (180, 180, 180), 1)
-        
+        cv2.putText(canvas, f"CAMERA STREAM STANDBY", (180, 230), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (120, 120, 120), 1)
+        cv2.putText(canvas, f"Endpoint: {self.source}", (220, 260), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (80, 80, 80), 1)
         return canvas
 
     def _calculate_productivity_and_save(self, start_time):
@@ -449,15 +436,26 @@ class CameraThread(threading.Thread):
 class CameraServiceManager:
     def __init__(self):
         self.threads: Dict[int, CameraThread] = {}
+        self.testing_mode: bool = True  # Development / testing mode flag
+
+    def set_testing_mode(self, enabled: bool):
+        self.testing_mode = enabled
+        # Update existing streams if testing mode changed
+        for cam_id, thread in list(self.threads.items()):
+            source = "0" if enabled else thread.source
+            self.start_camera(cam_id, source, thread.camera_type, thread.user_id)
 
     def start_camera(self, camera_id: int, source: str, camera_type: str, user_id: Optional[int]) -> bool:
         """
         Starts an asynchronous capture thread for the given camera configurations.
         """
+        # In testing mode, automatically override capture source to laptop webcam (0)
+        active_source = "0" if self.testing_mode else source
+
         # Stop existing if running
         self.stop_camera(camera_id)
         
-        thread = CameraThread(camera_id, source, camera_type, user_id)
+        thread = CameraThread(camera_id, active_source, camera_type, user_id)
         thread.daemon = True
         thread.start()
         

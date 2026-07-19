@@ -1,4 +1,5 @@
 import io
+from typing import Optional
 import pandas as pd
 from datetime import datetime
 from sqlalchemy.orm import Session

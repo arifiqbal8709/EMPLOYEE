@@ -112,6 +112,22 @@ def get_me(current_user: User = Depends(get_current_user)):
     return current_user
 
 
+# Refresh active JWT token
+@router.post("/refresh", response_model=Token)
+def refresh_token(current_user: User = Depends(get_current_user)):
+    """
+    Refreshes an active user JWT access token.
+    """
+    access_token_expires = timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+    new_token = create_access_token(subject=current_user.username, expires_delta=access_token_expires)
+    return {
+        "access_token": new_token,
+        "token_type": "bearer",
+        "role": current_user.role,
+        "username": current_user.username
+    }
+
+
 # PROTECTED ROUTE TESTS VERIFYING RBACPrivilege Guards
 @router.get("/admin-only")
 def test_admin_guard(user: User = Depends(RoleChecker(["admin"]))):

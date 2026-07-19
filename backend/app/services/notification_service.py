@@ -6,6 +6,7 @@ import asyncio
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from backend.app.core.database import SessionLocal
+from sqlalchemy.orm import Session
 from backend.app.models.user import User
 from backend.app.models.activity import KeyboardMouseActivity, ProductivityLog
 from backend.app.models.ai_log import NotificationSettings, AlertLog

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, TrendingUp, Camera, AlertTriangle, FileSpreadsheet, Download, RefreshCw, X } from 'lucide-react';
+import { Users, TrendingUp, Camera, AlertTriangle, FileSpreadsheet, Download, RefreshCw, X, Video, Activity, Radio } from 'lucide-react';
 import { api } from '../utils/api';
 
 export default function Dashboard() {
@@ -7,6 +7,61 @@ export default function Dashboard() {
   const [cameras, setCameras] = useState([]);
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(false);
+
+  // Webcam state variables
+  const [webcamActive, setWebcamActive] = useState(false);
+  const [webcamStatus, setWebcamStatus] = useState({
+    status: "stopped",
+    camera_status: "Inactive",
+    person_detected: "No",
+    phone_detected: "No",
+    laptop_detected: "No",
+    chair_detected: "No",
+    confidence: "0%",
+    fps: 0
+  });
+  const [streamHash, setStreamHash] = useState(Date.now());
+
+  useEffect(() => {
+    let timer;
+    const fetchWebcamStatus = async () => {
+      try {
+        const res = await fetch("http://localhost:8000/api/camera/status");
+        if (res.ok) {
+          const data = await res.json();
+          setWebcamStatus(data);
+          setWebcamActive(data.status === "running");
+        }
+      } catch (err) {
+        console.error("Error fetching webcam status:", err);
+      }
+    };
+
+    fetchWebcamStatus();
+    timer = setInterval(fetchWebcamStatus, 1200);
+    return () => clearInterval(timer);
+  }, []);
+
+  const handleStartWebcam = async () => {
+    try {
+      const res = await fetch("http://localhost:8000/api/camera/start", { method: "POST" });
+      if (res.ok) {
+        setWebcamActive(true);
+        setStreamHash(Date.now());
+      }
+    } catch (err) {
+      console.error("Error starting camera:", err);
+    }
+  };
+
+  const handleStopWebcam = async () => {
+    try {
+      await fetch("http://localhost:8000/api/camera/stop", { method: "POST" });
+      setWebcamActive(false);
+    } catch (err) {
+      console.error("Error stopping camera:", err);
+    }
+  };
 
   // Periodicity settings
   const [reportPeriod, setReportPeriod] = useState('daily'); // 'daily', 'weekly', 'monthly'
@@ -176,6 +231,144 @@ export default function Dashboard() {
             <FileSpreadsheet size={14} />
             <span>Generate Reports</span>
           </button>
+        </div>
+      </div>
+
+      {/* LIVE AI WEBCAM MONITOR PANEL */}
+      <div className="glass-card p-6 border-white/5 space-y-4">
+        <div className="flex items-center justify-between border-b border-white/5 pb-4">
+          <div className="flex items-center gap-2.5">
+            <Radio size={16} className={`text-indigo-400 ${webcamActive ? 'animate-pulse' : ''}`} />
+            <h4 className="text-white text-xs font-bold uppercase tracking-wider">Live AI Webcam Monitor</h4>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {!webcamActive ? (
+              <button
+                onClick={handleStartWebcam}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-[10px] px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
+              >
+                <span>Start Camera</span>
+              </button>
+            ) : (
+              <button
+                onClick={handleStopWebcam}
+                className="bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium text-[10px] px-3.5 py-1.5 rounded-lg transition-all flex items-center gap-1.5"
+              >
+                <span>Stop Camera</span>
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {/* Live stream preview frame */}
+          <div className="md:col-span-2 w-full h-80 bg-[#0b0c10] border border-white/5 rounded-xl flex items-center justify-center relative overflow-hidden">
+            {webcamActive && webcamStatus.status === "running" ? (
+              <img
+                src={`http://localhost:8000/api/camera/stream?t=${streamHash}`}
+                className="w-full h-full object-cover"
+                alt="Live Webcam Feed"
+                onError={(e) => {
+                  e.target.style.display = 'none';
+                }}
+              />
+            ) : webcamStatus.status === "no_device_error" ? (
+              <div className="flex flex-col items-center gap-2 text-red-500">
+                <AlertTriangle size={32} className="text-red-500" />
+                <span className="text-xs uppercase font-bold tracking-wider">No Webcam Device Found</span>
+                <span className="text-[10px] text-zinc-500">Please connect a camera or verify system permission settings</span>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-2 text-zinc-600">
+                <Camera size={32} className="text-zinc-700" />
+                <span className="text-[10px] uppercase font-bold tracking-wider">Webcam Standby</span>
+                <span className="text-[9px] text-zinc-700">Click Start Camera to initialize YOLOv11 engine</span>
+              </div>
+            )}
+
+            {/* Live FPS metric overlay */}
+            {webcamActive && webcamStatus.status === "running" && (
+              <div className="absolute top-3 right-3 bg-indigo-600/90 text-white font-mono text-[9px] font-bold px-2 py-0.5 rounded border border-indigo-400/20 shadow-lg">
+                FPS: {webcamStatus.fps}
+              </div>
+            )}
+          </div>
+
+          {/* Side panel metrics indicator */}
+          <div className="bg-white/5 border border-white/5 p-5 rounded-xl flex flex-col justify-between text-xs space-y-4">
+            <div>
+              <h5 className="text-white text-[10px] font-bold uppercase tracking-wider border-b border-white/5 pb-2 mb-3 flex items-center gap-1.5 flex-row">
+                <Activity size={12} className="text-indigo-400" />
+                <span>Detection Control Panel</span>
+              </h5>
+              
+              <div className="space-y-3 font-medium text-[11px]">
+                <div className="flex items-center justify-between border-b border-white/5 pb-2 flex-row">
+                  <span className="text-zinc-400">Camera Status</span>
+                  <div className="flex items-center gap-1.5 flex-row">
+                    <span className={`h-2 w-2 rounded-full ${
+                      webcamStatus.status === "running" ? "bg-emerald-400 animate-pulse" :
+                      webcamStatus.status === "no_device_error" ? "bg-rose-500" : "bg-zinc-500"
+                    }`} />
+                    <span className={`font-bold ${
+                      webcamStatus.status === "running" ? "text-emerald-400" :
+                      webcamStatus.status === "no_device_error" ? "text-rose-400" : "text-zinc-400"
+                    }`}>
+                      {webcamStatus.camera_status}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between border-b border-white/5 pb-2 flex-row">
+                  <span className="text-zinc-400">Person Detected</span>
+                  <span className={`font-bold px-2 py-0.5 rounded ${
+                    webcamStatus.person_detected === "Yes" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/10" : "bg-zinc-800 text-zinc-400"
+                  }`}>
+                    {webcamStatus.person_detected}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between border-b border-white/5 pb-2 flex-row">
+                  <span className="text-zinc-400">Phone Detected</span>
+                  <span className={`font-bold px-2 py-0.5 rounded ${
+                    webcamStatus.phone_detected === "Yes" ? "bg-rose-500/10 text-rose-400 border border-rose-500/10" : "bg-zinc-800 text-zinc-400"
+                  }`}>
+                    {webcamStatus.phone_detected}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between border-b border-white/5 pb-2 flex-row">
+                  <span className="text-zinc-400">Laptop Detected</span>
+                  <span className={`font-bold px-2 py-0.5 rounded ${
+                    webcamStatus.laptop_detected === "Yes" ? "bg-emerald-500/10 text-emerald-400 border border-emerald-500/10" : "bg-zinc-800 text-zinc-400"
+                  }`}>
+                    {webcamStatus.laptop_detected}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between border-b border-white/5 pb-2 flex-row">
+                  <span className="text-zinc-400">Chair Detected</span>
+                  <span className={`font-bold px-2 py-0.5 rounded ${
+                    webcamStatus.chair_detected === "Yes" ? "bg-indigo-500/10 text-indigo-400 border border-indigo-500/10" : "bg-zinc-800 text-zinc-400"
+                  }`}>
+                    {webcamStatus.chair_detected}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between pt-1 flex-row">
+                  <span className="text-zinc-400">Detection Confidence</span>
+                  <span className="font-bold font-mono text-indigo-400 text-xs">
+                    {webcamStatus.confidence}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <div className="text-[9px] text-zinc-500 bg-[#0d0e12] p-2.5 rounded-lg border border-white/5">
+              💡 YOLOv11 extracts detections real-time. Objects detected are automatically synchronized to the local database.
+            </div>
+          </div>
         </div>
       </div>
 

@@ -1,3 +1,21 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import torch
+# Patch torch.load to default weights_only to False to support YOLO model unpickling on PyTorch 2.6+
+if hasattr(torch, '_original_load'):
+    torch.load = torch._original_load
+else:
+    torch._original_load = torch.load
+
+def patched_load(*args, **kwargs):
+    if 'weights_only' not in kwargs:
+        kwargs['weights_only'] = False
+    return torch._original_load(*args, **kwargs)
+torch.load = patched_load
+print("MONKEYPATCH: torch.load monkeypatched successfully", torch.load)
+
 import uvicorn
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
@@ -6,6 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.app.core.config import settings
 from backend.app.core.database import engine, Base, SessionLocal
 from backend.app.api import auth, employees, cameras, notifications, ai
+from backend.app.api.camera_control import router as camera_control_router
 from backend.app.services.camera_service import camera_service_manager
 from backend.app.services.notification_service import notification_service
 from backend.app.models.camera import Camera
@@ -79,6 +98,7 @@ app.include_router(employees.router, prefix=f"{settings.API_V1_STR}/employees", 
 app.include_router(cameras.router, prefix=f"{settings.API_V1_STR}/cameras", tags=["Camera Controls"])
 app.include_router(notifications.router, prefix=f"{settings.API_V1_STR}/notifications", tags=["Notification Center"])
 app.include_router(ai.router, prefix="/api/ai", tags=["AI Camera Engine"])
+app.include_router(camera_control_router, prefix="/api/camera", tags=["Webcam AI Control"])
 
 @app.get("/")
 def read_root():
@@ -90,4 +110,4 @@ def read_root():
     }
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

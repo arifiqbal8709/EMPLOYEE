@@ -12,20 +12,22 @@ from backend.app.services.camera_service import camera_service_manager
 router = APIRouter()
 
 # 1. List all cameras
+@router.get("", response_model=List[CameraResponse])
 @router.get("/", response_model=List[CameraResponse])
 def get_cameras(
     db: Session = Depends(get_db),
-    current_user = Depends(RoleChecker(["admin", "manager"]))
+    current_user = Depends(get_current_user)
 ):
     return db.query(Camera).all()
 
 
 # 2. Register new camera
+@router.post("", response_model=CameraResponse, status_code=status.HTTP_201_CREATED)
 @router.post("/", response_model=CameraResponse, status_code=status.HTTP_201_CREATED)
 def create_camera(
     camera_in: CameraCreate,
     db: Session = Depends(get_db),
-    current_user = Depends(RoleChecker(["admin", "manager"]))
+    current_user = Depends(get_current_user)
 ):
     db_cam = Camera(
         name=camera_in.name,
@@ -116,3 +118,15 @@ def stream_camera(id: int):
 @router.get("/{id}/telemetry")
 def get_camera_telemetry(id: int):
     return camera_service_manager.get_telemetry(id)
+
+
+# 7. Testing Mode status & toggle endpoints for Laptop Webcam testing
+@router.get("/testing-mode")
+def get_testing_mode():
+    return {"testing_mode": camera_service_manager.testing_mode}
+
+@router.post("/testing-mode")
+def set_testing_mode(payload: dict):
+    enabled = payload.get("enabled", True)
+    camera_service_manager.set_testing_mode(enabled)
+    return {"status": "success", "testing_mode": camera_service_manager.testing_mode}

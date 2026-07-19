@@ -31,6 +31,24 @@ def build_and_seed_db():
         print("Seeding default accounts...")
         users_to_seed = [
             {
+                "username": "admin",
+                "password": "Password123",
+                "role": "admin",
+                "employee_id": "EMP-000",
+                "department": "Administration",
+                "camera_id": "0",
+                "status": "active"
+            },
+            {
+                "username": "alice",
+                "password": "Password123",
+                "role": "employee",
+                "employee_id": "EMP-003",
+                "department": "Software Engineering",
+                "camera_id": "1",
+                "status": "active"
+            },
+            {
                 "username": "admin_user",
                 "password": "AdminPass123",
                 "role": "admin",

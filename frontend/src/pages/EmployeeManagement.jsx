@@ -50,6 +50,7 @@ export default function EmployeeManagement() {
   };
 
   const handleOpenAdd = () => {
+    setError('');
     setUsername('');
     setPassword('');
     setEmployeeId('');
@@ -60,6 +61,7 @@ export default function EmployeeManagement() {
   };
 
   const handleOpenEdit = (emp) => {
+    setError('');
     setSelectedUser(emp);
     setUsername(emp.username);
     setPassword(''); // Leave password empty unless updating
@@ -73,6 +75,7 @@ export default function EmployeeManagement() {
   // Dispatch POST Create
   const handleCreate = async (e) => {
     e.preventDefault();
+    setError('');
     if (!username || !password) {
       setError('Username and Password are required.');
       return;
@@ -80,11 +83,11 @@ export default function EmployeeManagement() {
     setLoading(true);
     try {
       await api.employees.create({
-        username,
+        username: username.trim(),
         password,
-        employee_id: employeeId || null,
-        department: department || null,
-        camera_id: cameraId || '0',
+        employee_id: employeeId.trim() || null,
+        department: department.trim() || null,
+        camera_id: cameraId.trim() || '0',
         status: userStatus
       });
       setAddModalOpen(false);
@@ -99,14 +102,15 @@ export default function EmployeeManagement() {
   // Dispatch PUT Update
   const handleUpdate = async (e) => {
     e.preventDefault();
+    setError('');
     setLoading(true);
     try {
       await api.employees.update(selectedUser.id, {
-        username,
-        password: password || null,
-        employee_id: employeeId || null,
-        department: department || null,
-        camera_id: cameraId || '0',
+        username: username.trim(),
+        password: password ? password : null,
+        employee_id: employeeId.trim() || null,
+        department: department.trim() || null,
+        camera_id: cameraId.trim() || '0',
         status: userStatus
       });
       setEditModalOpen(false);
@@ -141,7 +145,16 @@ export default function EmployeeManagement() {
             <AlertCircle size={15} />
             <span>{error}</span>
           </div>
-          <button onClick={() => setError('')}><X size={14} /></button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={fetchEmployees}
+              className="bg-red-500/20 hover:bg-red-500/30 text-white px-3 py-1 rounded-lg flex items-center gap-1 font-medium transition-all"
+            >
+              <RefreshCw size={12} className={loading ? "animate-spin" : ""} />
+              <span>Retry</span>
+            </button>
+            <button onClick={() => setError('')}><X size={14} /></button>
+          </div>
         </div>
       )}
 
@@ -285,6 +298,16 @@ export default function EmployeeManagement() {
               </button>
             </div>
             
+            {error && (
+              <div className="mb-4 bg-red-500/10 border border-red-500/20 text-red-400 text-xs px-4 py-3 rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertCircle size={15} />
+                  <span>{error}</span>
+                </div>
+                <button type="button" onClick={() => setError('')}><X size={14} /></button>
+              </div>
+            )}
+            
             <form onSubmit={handleCreate} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -383,6 +406,16 @@ export default function EmployeeManagement() {
                 <X size={18} />
               </button>
             </div>
+            
+            {error && (
+              <div className="mb-4 bg-red-500/10 border border-red-500/20 text-red-400 text-xs px-4 py-3 rounded-xl flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <AlertCircle size={15} />
+                  <span>{error}</span>
+                </div>
+                <button type="button" onClick={() => setError('')}><X size={14} /></button>
+              </div>
+            )}
             
             <form onSubmit={handleUpdate} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
